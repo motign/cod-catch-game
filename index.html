@@ -30,18 +30,49 @@
       box-shadow: 0 2px 10px #61ff5e26;
     }
     #restart:hover, #restart2:hover { background: #367933; }
+
+    /* Overlay פתיחה */
+    #start-overlay {
+      position: fixed; left: 0; top: 0; width: 100vw; height: 100vh; z-index: 999;
+      background: rgba(255,255,255,0.89); display: flex; align-items: center; justify-content: center;
+      font-size: 2.7rem; color: #294d88; font-family: 'Varela Round', Arial, sans-serif;
+      font-weight: bold; cursor: pointer; letter-spacing: 1px; transition: background 0.2s;
+      user-select: none;
+    }
+    #start-overlay:hover {
+      background: rgba(210,226,255,0.96);
+    }
   </style>
 </head>
 <body>
-  <audio id="lose-audio" src="loseSong.mp3" preload="auto"></audio>
-  <div id="overlay">תברחחחחח</div>
-  <div id="timer">00:20</div>
-  <div id="gameover">אחחח את פלי<br><button id="restart">נסה שוב</button></div>
-  <div id="victory">ניצחת!<br><button id="restart2">שחק שוב</button></div>
+  <div id="start-overlay">לחץ להתחלת המשחק 🎮</div>
+    <audio id="lose-audio" src="loseSong.mp3"></audio>
+    <div id="overlay">תברחחחחח</div>
+    <div id="timer">00:20</div>
+    <div id="gameover">אחחח את פלי<br><button id="restart">נסה שוב</button></div>
+    <div id="victory">ניצחת!<br><button id="restart2">שחק שוב</button></div>
   <script src="https://cdn.jsdelivr.net/npm/three@0.155.0/build/three.min.js"></script>
   <script>
+    
+        let playersReady = false; // הועבר לכאן
+    document.getElementById("start-overlay").addEventListener("click", async function startGameOnce() {
+      const audio = document.getElementById("lose-audio");
+      try {
+        await audio.play();
+        audio.pause();
+        audio.currentTime = 0;
+      } catch (e) {}
+      document.getElementById("start-overlay").style.display = "none";
+      // אתחול כל משתני המשחק (כולל קריאת restartAll)
+      await restartAll();
+      playersReady = true;
+      updateTimerDisplay();
+      animate();
+    });
+
+    
     // טקסט גדול מעל הדמות
-    function makeTextLabel(text, color="#2796ff") {
+  function makeTextLabel(text, color="#2796ff") {
       const canvas = document.createElement('canvas');
       canvas.width = 600;
       canvas.height = 150;
@@ -485,8 +516,7 @@
     document.getElementById('restart').onclick = resetGame;
     document.getElementById('restart2').onclick = resetGame;
 
-    // לולאת האנימציה
-    let playersReady = false;
+  
     restartAll().then(()=>{
       playersReady = true;
       updateTimerDisplay();
