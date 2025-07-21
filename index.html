@@ -30,8 +30,6 @@
       box-shadow: 0 2px 10px #61ff5e26;
     }
     #restart:hover, #restart2:hover { background: #367933; }
-
-    /* Overlay פתיחה */
     #start-overlay {
       position: fixed; left: 0; top: 0; width: 100vw; height: 100vh; z-index: 999;
       background: rgba(255,255,255,0.89); display: flex; align-items: center; justify-content: center;
@@ -46,15 +44,23 @@
 </head>
 <body>
   <div id="start-overlay">לחץ להתחלת המשחק 🎮</div>
-    <audio id="lose-audio" src="loseSong.mp3"></audio>
-    <div id="overlay">תברחחחחח</div>
-    <div id="timer">00:20</div>
-    <div id="gameover">אחחח את פלי<br><button id="restart">נסה שוב</button></div>
-    <div id="victory">ניצחת!<br><button id="restart2">שחק שוב</button></div>
+  <audio id="lose-audio" src="loseSong.mp3"></audio>
+  <div id="overlay">תברחחחחח</div>
+  <div id="timer">00:20</div>
+  <div id="gameover">אחחח את פלי<br><button id="restart">נסה שוב</button></div>
+  <div id="victory">ניצחת!<br><button id="restart2">שחק שוב</button></div>
   <script src="https://cdn.jsdelivr.net/npm/three@0.155.0/build/three.min.js"></script>
   <script>
-    
-        let playersReady = false; // הועבר לכאן
+    let playersReady = false;
+    let firstMoveDone = false;
+
+    // --- מהירויות (ניתן לשנות) ---
+    let playerSpeed = 0.13;   // מהירות שחקן התחלתית
+    let enemySpeed = 0.10;    // מהירות אויב התחלתית
+    let enemyFastSpeed = 0.17; // מהירות אויב אחרי 5 שניות
+    let enemyCurrentSpeed = enemySpeed;
+    let speedUpTimeout = null;
+
     document.getElementById("start-overlay").addEventListener("click", async function startGameOnce() {
       const audio = document.getElementById("lose-audio");
       try {
@@ -63,16 +69,13 @@
         audio.currentTime = 0;
       } catch (e) {}
       document.getElementById("start-overlay").style.display = "none";
-      // אתחול כל משתני המשחק (כולל קריאת restartAll)
       await restartAll();
       playersReady = true;
       updateTimerDisplay();
       animate();
     });
 
-    
-    // טקסט גדול מעל הדמות
-  function makeTextLabel(text, color="#2796ff") {
+    function makeTextLabel(text, color="#2796ff") {
       const canvas = document.createElement('canvas');
       canvas.width = 600;
       canvas.height = 150;
@@ -94,28 +97,26 @@
       return sprite;
     }
 
-    // דמות בלוק עם טקסטורה
     function createBlockCharacter(imgUrl, blockColor, scene, yOffset = 0) {
       return new Promise((resolve) => {
         new THREE.TextureLoader().load(imgUrl, (tex) => {
           const group = new THREE.Group();
 
-            const materials = [
-            new THREE.MeshStandardMaterial({color: blockColor}), // Right
-            new THREE.MeshStandardMaterial({color: blockColor}), // Left
-            new THREE.MeshStandardMaterial({color: blockColor}), // Top
-            new THREE.MeshStandardMaterial({color: blockColor}), // Bottom
-            new THREE.MeshStandardMaterial({map: tex}),          // Front (index 4)
-            new THREE.MeshStandardMaterial({map: tex}),          // Back  (index 5)
-        ];
-        const box = new THREE.Mesh(
-            new THREE.BoxGeometry(0.8, 1.6, 0.45),
-            materials
-        );
-        box.position.set(0, 0.8 + yOffset, 0);
-        group.add(box);
+          const materials = [
+            new THREE.MeshStandardMaterial({color: blockColor}),
+            new THREE.MeshStandardMaterial({color: blockColor}),
+            new THREE.MeshStandardMaterial({color: blockColor}),
+            new THREE.MeshStandardMaterial({color: blockColor}),
+            new THREE.MeshStandardMaterial({map: tex}),
+            new THREE.MeshStandardMaterial({map: tex}),
+          ];
+          const box = new THREE.Mesh(
+              new THREE.BoxGeometry(0.8, 1.6, 0.45),
+              materials
+          );
+          box.position.set(0, 0.8 + yOffset, 0);
+          group.add(box);
 
-          // יד שמאל
           const leftArm = new THREE.Mesh(
             new THREE.CylinderGeometry(0.11, 0.13, 0.57, 16),
             new THREE.MeshStandardMaterial({color:0xc8ae80})
@@ -124,13 +125,11 @@
           leftArm.rotation.z = Math.PI/6;
           group.add(leftArm);
 
-          // יד ימין
           const rightArm = leftArm.clone();
           rightArm.position.x = 0.55;
           rightArm.rotation.z *= -1;
           group.add(rightArm);
 
-          // רגל שמאל
           const leftLeg = new THREE.Mesh(
             new THREE.CylinderGeometry(0.12, 0.14, 0.44, 12),
             new THREE.MeshStandardMaterial({color:0x303d3c})
@@ -138,12 +137,10 @@
           leftLeg.position.set(-0.22, 0.22 + yOffset, 0.08);
           group.add(leftLeg);
 
-          // רגל ימין
           const rightLeg = leftLeg.clone();
           rightLeg.position.x = 0.22;
           group.add(rightLeg);
 
-          // בסיס
           const base = new THREE.Mesh(
             new THREE.CylinderGeometry(0.47,0.47,0.05,24),
             new THREE.MeshStandardMaterial({color: blockColor==0x35534a ? 0x85d39e : 0xd67b7b})
@@ -156,7 +153,6 @@
       });
     }
 
-    // === הגדרות בסיס ===
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0xe5ecff);
 
@@ -173,7 +169,6 @@
     scene.add(light);
     scene.add(new THREE.AmbientLight(0xffffff, 0.4));
 
-    // קרקע
     const groundSize = 32;
     const margin = 2.5;
     const ground = new THREE.Mesh(
@@ -187,7 +182,6 @@
       if (!mesh.geometry.boundingBox) mesh.geometry.computeBoundingBox();
     }
 
-    // מכשולים
     let obstacles = [];
     const obstacleMaterial = new THREE.MeshStandardMaterial({color: 0x42536e, roughness: 0.55});
     const obstacleSize = 2;
@@ -229,7 +223,6 @@
       }
     }
 
-    // קירות
     const walls = [];
     function createWalls() {
       [ [0, groundSize/2-1], [0, -groundSize/2+1], [-groundSize/2+1, 0], [groundSize/2-1, 0] ]
@@ -259,7 +252,6 @@
       );
     }
 
-    // מיקום התחלתי פנוי באמת
     function getSafePosition(minDistFromObstacles=2.2, minDistFromOthers=3, forbidden=[]) {
       let tries = 0;
       let x, z;
@@ -281,7 +273,6 @@
       return null;
     }
 
-    // דמויות גלובליות
     let playerMeta = {group: null, mesh: null, label: null};
     let enemyMeta = {group: null, mesh: null, label: null};
 
@@ -293,20 +284,24 @@
       let pxz = getSafePosition(2.5, 3, forbidden);
       if (!pxz) throw 'לא נמצא מקום פנוי לשחקן – התחלה מחדש!';
       forbidden.push(pxz);
-      let exz = getSafePosition(2.5, 3, forbidden);
+
+      // לוודא שהאויב רחוק מהשחקן (לפחות 7 יחידות)
+      let exz = null, tries = 0;
+      while (tries < 60 && (!exz || Math.hypot(pxz[0]-exz[0], pxz[1]-exz[1]) < 7)) {
+        exz = getSafePosition(2.5, 3, forbidden);
+        tries++;
+      }
       if (!exz) throw 'לא נמצא מקום פנוי לאדום – התחלה מחדש!';
 
-      // שחקן
       playerMeta.group = await createBlockCharacter("player.jpg", 0x35534a, scene);
       playerMeta.group.position.set(pxz[0], 0, pxz[1]);
       scene.add(playerMeta.group);
       playerMeta.mesh = playerMeta.group.children[0];
       computeBox(playerMeta.mesh);
-      playerMeta.label = makeTextLabel("shachar", "#2796ff");
+      playerMeta.label = makeTextLabel("michaels", "#2796ff");
       playerMeta.label.position.set(0, 1.75, 0);
       playerMeta.group.add(playerMeta.label);
 
-      // אויב
       enemyMeta.group = await createBlockCharacter("enemy.jpg", 0xf5f5f5, scene);
       enemyMeta.group.position.set(exz[0], 0, exz[1]);
       scene.add(enemyMeta.group);
@@ -319,11 +314,20 @@
 
     // קלט
     let keys = {};
-    document.addEventListener('keydown', e => { keys[e.code] = true; });
+    document.addEventListener('keydown', e => {
+      keys[e.code] = true;
+      if (!firstMoveDone && (
+        e.code === 'ArrowUp' || e.code === 'ArrowDown' ||
+        e.code === 'ArrowLeft' || e.code === 'ArrowRight' ||
+        e.code === 'KeyW' || e.code === 'KeyA' ||
+        e.code === 'KeyS' || e.code === 'KeyD'
+      )) {
+        firstMoveDone = true;
+      }
+    });
     document.addEventListener('keyup', e => { keys[e.code] = false; });
 
-    // תנועת שחקן – כולל מניעת מעבר דרך מכשולים
-    function move(group, mesh, dir, speed=0.23) {
+    function move(group, mesh, dir, speed) {
       if (dir.x===0 && dir.z===0) return false;
       const step = {x: dir.x*speed, z: dir.z*speed};
       const test = mesh.clone();
@@ -336,9 +340,9 @@
       return true;
     }
 
-    // AI – בוחר צעד שמקרב לשחקן, לא עובר דרך מכשולים
     function enemyChase() {
-      const speed = 0.15;
+      if (!firstMoveDone) return;
+      const speed = enemyCurrentSpeed;
       const dirs = [
         {x:1, z:0}, {x:-1, z:0}, {x:0, z:1}, {x:0, z:-1},
         {x:1, z:1}, {x:1, z:-1}, {x:-1, z:1}, {x:-1, z:-1}
@@ -364,7 +368,6 @@
       if (bestDir) move(enemyMeta.group, enemyMeta.mesh, bestDir, speed);
     }
 
-    // --- טיימר ובריחה ---
     let running = true, win = false, caught = false;
     let timeLeft = 20;
     let lastTick = Date.now();
@@ -376,7 +379,6 @@
       timerDiv.textContent = `${mm}:${ss}`;
     }
 
-    // --- סצנת תפיסה (השחקן משותק, האויב מזיז אותו "הלוך חזור") ---
     let hitScene = null;
     function startHitScene() {
       if (!obstacles.length) {
@@ -438,7 +440,6 @@
       hitScene.t += 0.035;
       let newAngle;
       if (hitScene.state % 2 === 0) {
-        // תנועה מהמיקום הנוכחי למכשול (השחקן פסיבי)
         playerMeta.group.position.x = start.x + (hit.x - start.x) * hitScene.t;
         playerMeta.group.position.z = start.z + (hit.z - start.z) * hitScene.t;
         enemyMeta.group.position.x = playerMeta.group.position.x;
@@ -450,7 +451,6 @@
           hitScene.state++;
         }
       } else {
-        // תנועה חזרה (השחקן עדיין פסיבי)
         playerMeta.group.position.x = hit.x + (back.x - hit.x) * hitScene.t;
         playerMeta.group.position.z = hit.z + (back.z - hit.z) * hitScene.t;
         enemyMeta.group.position.x = playerMeta.group.position.x;
@@ -472,7 +472,6 @@
       }
     }
 
-    // אתחול מחודש של המשחק
     async function restartAll() {
       let safe = false;
       let tries = 0;
@@ -493,6 +492,13 @@
         }
       }
       if (!safe && tries >= 10) location.reload();
+
+      // --- איפוס מהירות אויב וטיימר ---
+      enemyCurrentSpeed = enemySpeed;
+      if (speedUpTimeout) clearTimeout(speedUpTimeout);
+      speedUpTimeout = setTimeout(()=>{
+        enemyCurrentSpeed = enemyFastSpeed;
+      }, 5000);
     }
 
     async function resetGame() {
@@ -502,6 +508,7 @@
       hitScene = null;
       timeLeft = 20;
       lastTick = Date.now();
+      firstMoveDone = false;
       updateTimerDisplay();
       document.getElementById("gameover").style.display = "none";
       document.getElementById("victory").style.display = "none";
@@ -511,12 +518,18 @@
       caught = false;
       hitScene = null;
       running = true;
+
+      // --- איפוס מהירות אויב וטיימר ---
+      enemyCurrentSpeed = enemySpeed;
+      if (speedUpTimeout) clearTimeout(speedUpTimeout);
+      speedUpTimeout = setTimeout(()=>{
+        enemyCurrentSpeed = enemyFastSpeed;
+      }, 5000);
     }
 
     document.getElementById('restart').onclick = resetGame;
     document.getElementById('restart2').onclick = resetGame;
 
-  
     restartAll().then(()=>{
       playersReady = true;
       updateTimerDisplay();
@@ -543,10 +556,8 @@
       }
 
       if (hitScene) {
-        // בזמן תפיסה – השחקן לא מגיב, האויב מזיז אותו
         animateHitScene();
       } else if (running && !caught && !win) {
-        // תנועה רק אם לא נתפס
         let dir = {x:0, z:0};
         if (keys['ArrowUp']||keys['KeyW']) dir.z -= 1;
         if (keys['ArrowDown']||keys['KeyS']) dir.z += 1;
@@ -554,7 +565,12 @@
         if (keys['ArrowRight']||keys['KeyD']) dir.x += 1;
         const len = Math.hypot(dir.x, dir.z) || 1;
         dir.x /= len; dir.z /= len;
-        move(playerMeta.group, playerMeta.mesh, dir);
+
+        if (!firstMoveDone && (dir.x !== 0 || dir.z !== 0)) {
+          firstMoveDone = true;
+        }
+
+        move(playerMeta.group, playerMeta.mesh, dir, playerSpeed);
 
         enemyChase();
 
@@ -566,7 +582,7 @@
           caught = true;
           startHitScene();
         }
-        playerMeta.group.rotation.y = 0; // מסובבים רק כשהולכים רגיל
+        playerMeta.group.rotation.y = 0;
       }
 
       camera.position.x += (playerMeta.group.position.x - camera.position.x)*0.09;
@@ -581,6 +597,7 @@
       camera.updateProjectionMatrix();
       renderer.setSize(window.innerWidth, window.innerHeight);
     });
+
   </script>
 </body>
 </html>
